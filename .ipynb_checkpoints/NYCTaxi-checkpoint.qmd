@@ -1,0 +1,125 @@
+---
+title: "NYCTaxi"
+author: "김태수(202016219)"
+format: dashboard
+execute: 
+  enabled: true
+  cache: false
+  freeze: false
+---
+
+```{python}
+#| output: false
+import numpy as np
+import pandas as pd
+import plotly.express as px
+import plotly.io as pio
+import json
+import requests
+import pickle
+
+pd.options.plotting.backend = "plotly"
+pio.templates.default = "plotly_white"
+
+df = pd.read_csv("https://raw.githubusercontent.com/guebin/DV2023/main/posts/NYCTaxi.csv").assign(
+    log_trip_duration = lambda df: np.log(df.trip_duration),
+    pickup_datetime = lambda df: df.pickup_datetime.apply(pd.to_datetime),
+    dropoff_datetime = lambda df: df.dropoff_datetime.apply(pd.to_datetime),
+    dist = lambda df: np.sqrt((df.pickup_latitude-df.dropoff_latitude)**2 + (df.pickup_longitude-df.dropoff_longitude)**2),
+    #---#
+    vendor_id = lambda df: df.vendor_id.map({1:'A',2:'B'})
+).assign(
+    speed = lambda df: df.dist / df.trip_duration,
+    pickup_hour = lambda df: df.pickup_datetime.dt.hour,
+    dropoff_hour = lambda df: df.dropoff_datetime.dt.hour,
+    dayofweek = lambda df: df.pickup_datetime.dt.dayofweek
+)
+df_small = df[::100].reset_index(drop=True)
+
+tidydata = df.pivot_table(
+    index = 'pickup_hour',
+    columns = 'dayofweek',
+    values = 'speed',
+    aggfunc = 'mean'
+).stack().reset_index().rename({0:'speed_mean'},axis=1)\
+.assign(dayofweek= lambda df: df.dayofweek.map({0:'월',1:'화',2:'수',3:'목',4:'금',5:'토',6:'일'}))
+fig1=px.density_heatmap(
+    data_frame=tidydata,
+    x='pickup_hour',
+    y='dayofweek',
+    z='speed_mean',
+    nbinsx=24,
+    nbinsy=7,
+    height=300
+)
+
+tidydata = df.pivot_table(
+    index = 'pickup_hour',
+    columns = 'dayofweek',
+    values = 'dist',
+    aggfunc = 'mean'
+).stack().reset_index().rename({0:'dist_mean'},axis=1)\
+.assign(dayofweek= lambda df: df.dayofweek.map({0:'월',1:'화',2:'수',3:'목',4:'금',5:'토',6:'일'}))
+tidydata
+fig2=px.density_heatmap(
+    data_frame=tidydata,
+    x='pickup_hour',
+    y='dayofweek',
+    z='dist_mean',
+    nbinsx=24,
+    nbinsy=7,
+    height=300
+)
+
+pcol = ['pickup_datetime', 'pickup_longitude', 'pickup_latitude', 'pickup_hour']
+dcol = ['dropoff_datetime', 'dropoff_longitude', 'dropoff_latitude', 'dropoff_hour']
+def transform(df):
+    pickup = df.loc[:,['id']+pcol].set_axis(['id', 'datetime', 'longitude', 'latitude', 'hour'],axis=1).assign(type = 'pickup')
+    dropoff = df.loc[:,['id']+dcol].set_axis(['id', 'datetime', 'longitude', 'latitude', 'hour'],axis=1).assign(type = 'dropoff')
+    return pd.concat([pickup,dropoff],axis=0)
+df_left = df_small.assign(speed_cut=pd.qcut(df_small.speed,4,labels=['매우느림','조금느림','조금빠름','매우빠름'])).drop(pcol+dcol,axis=1)
+df_right = pd.concat([transform(df) for i, df in df_small.assign(speed_cut=pd.qcut(df_small.speed,4,labels=['매우느림','조금느림','조금빠름','매우빠름'])).groupby('id')]).reset_index(drop=True)
+df_small2 = df_left.merge(df_right)
+
+fig3 = px.line_mapbox(
+    data_frame=df_small2,
+    lat = 'latitude',
+    lon = 'longitude',
+    color = 'speed_cut',
+    line_group = 'id',
+    center = {'lat':40.7322, 'lon':-73.9052},
+    #---#
+    mapbox_style = 'carto-positron',
+    zoom=11    
+)
+scatter_data = px.scatter_mapbox(
+    data_frame=df_small2,
+    lat = 'latitude',
+    lon = 'longitude',
+    color = 'speed_cut',
+    #---#
+    mapbox_style = 'carto-positron',
+    zoom=11    
+).data
+for sd in scatter_data: 
+    fig3.add_trace(sd)
+```
+
+# 기말고사1-(1),(2)
+
+```{python}
+#| title: 요일,시간에 따른 평균속력 시각화        
+fig1.show()
+```
+
+```{python}
+#| title: 요일,시간에 따른 평균이동거리 시각화        
+fig2.show()
+```
+
+# 기말고사1-(3)
+
+```{python}
+#| title: 속력별 경로 시각화
+fig3.show()
+```
