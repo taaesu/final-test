@@ -124,6 +124,10 @@ layout = {
     'legend': {'title': '평균속력'}
 }
 fig3.update_layout(layout)
+for i in range(150):
+    if i<146 : fig3.data[i].name=fig3.data[i].legendgroup + ' (path) '
+    else : fig3.data[i].name=fig3.data[i].legendgroup + ' (pickup/dropoff) '
+fig3
 ```
 
 # 기말고사1-(1),(2)
